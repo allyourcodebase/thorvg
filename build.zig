@@ -49,6 +49,13 @@ pub fn build(b: *std.Build) !void {
         .flags = flags,
     });
 
+    lib.installHeadersDirectory(upstream.path("src/bindings/capi"), "", .{});
+    lib.addIncludePath(upstream.path("src/bindings/capi"));
+    lib.addCSourceFile(.{
+        .file = upstream.path("src/bindings/capi/tvgCapi.cpp"),
+        .flags = flags,
+    });
+
     b.installArtifact(lib);
 
     const tests = b.addExecutable(.{
@@ -69,6 +76,7 @@ pub fn build(b: *std.Build) !void {
     });
 
     const run_tests = b.addRunArtifact(tests);
+    if (b.args) |args| run_tests.addArgs(args);
 
     const test_step = b.step("test", "Run thorvg tests");
     test_step.dependOn(&run_tests.step);
