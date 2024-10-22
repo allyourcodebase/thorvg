@@ -1,0 +1,17 @@
+.{
+    .name = "thorvg",
+    .version = "0.0.0",
+    .dependencies = .{
+        .thorvg = .{
+            .url = "git+https://github.com/thorvg/thorvg#v1.0-pre2",
+            .hash = "1220abcf085186487d24cfb1eb1a36627030ea950fd28e1f9e7ff64f9053512674be",
+        },
+    },
+
+    .paths = .{
+        "LICENSE",
+        "README.md",
+        "build.zig",
+        "build.zig.zon",
+    },
+}
