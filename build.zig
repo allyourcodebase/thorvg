@@ -146,11 +146,6 @@ pub fn build(b: *std.Build) !void {
 
     if (engine_set.contains(.gl)) {
         lib.addIncludePath(b.path("include"));
-        if (target.result.os.tag == .windows) {
-            lib.linkSystemLibrary2("opengl32", .{
-                .preferred_link_mode = .dynamic,
-            });
-        }
         lib.addIncludePath(upstream.path("src/renderer/gl_engine"));
         lib.addCSourceFiles(.{
             .files = gl_engine_sources,
