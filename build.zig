@@ -30,9 +30,17 @@ pub const Saver = enum {
     gif,
 };
 
+// TODO: Remove sanitize_c, path stripping function in common tvgStr causing UB
+
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+
+    const upstream_dev = b.option(
+        bool,
+        "upstream-dev",
+        "Should build.zig be configured to allow upstream dev work?",
+    ) orelse false;
 
     const engines = b.option(
         []const Engine,
@@ -69,13 +77,14 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
+    lib.root_module.sanitize_c = false;
+
     lib.linkLibCpp();
 
     const config_h = b.addConfigHeader(.{
         .include_path = "config.h",
     }, .{
         .THORVG_VERSION_STRING = version,
-        .THORVG_SW_RASTER_SUPPORT = 1,
         .THORVG_CAPI_BINDING_SUPPORT = 1,
         .WIN32_LEAN_AND_MEAN = 1,
     });
@@ -135,8 +144,23 @@ pub fn build(b: *std.Build) !void {
         });
     }
 
-    if (engine_set.contains(.gl) or engine_set.contains(.wg)) {
-        @panic("TODO: support gl and wg engines");
+    if (engine_set.contains(.gl)) {
+        lib.addIncludePath(b.path("include"));
+        if (target.result.os.tag == .windows) {
+            lib.linkSystemLibrary2("opengl32", .{
+                .preferred_link_mode = .dynamic,
+            });
+        }
+        lib.addIncludePath(upstream.path("src/renderer/gl_engine"));
+        lib.addCSourceFiles(.{
+            .files = gl_engine_sources,
+            .root = upstream.path("src/renderer/gl_engine"),
+            .flags = flags,
+        });
+    }
+
+    if (engine_set.contains(.wg)) {
+        @panic("TODO: support wg engine");
     }
 
     if (loader_set.contains(.svg)) {
@@ -150,6 +174,7 @@ pub fn build(b: *std.Build) !void {
 
     if (loader_set.contains(.lottie)) {
         lib.addIncludePath(upstream.path("src/loaders/lottie"));
+        lib.installHeader(upstream.path("src/loaders/lottie/thorvg_lottie.h"), "thorvg_lottie.h");
         lib.addCSourceFiles(.{
             .files = loaders_lottie_sources,
             .root = upstream.path("src/loaders/lottie"),
@@ -194,11 +219,15 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
+    tests.root_module.sanitize_c = false;
+
     tests.linkLibCpp();
     tests.linkLibrary(lib);
     tests.installLibraryHeaders(lib);
     tests.root_module.addCMacro("TVG_STATIC", "");
-    tests.root_module.addCMacro("TEST_DIR", "\".\"");
+    tests.root_module.addCMacro("TEST_DIR", b.fmt("\"{s}\"", .{
+        PathFormatter{ .path = upstream.path("test/resources").getPath(b) },
+    }));
     tests.addCSourceFiles(.{
         .files = test_sources,
         .root = upstream.path("test"),
@@ -210,7 +239,68 @@ pub fn build(b: *std.Build) !void {
 
     const test_step = b.step("test", "Run thorvg tests");
     test_step.dependOn(&run_tests.step);
+
+    // Upstream dev
+    if (!upstream_dev) return;
+
+    const sdl_dep = b.lazyDependency("sdl", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
+    if (sdl_dep == null) return;
+
+    const sdl = sdl_dep.?.artifact("SDL2");
+
+    const c_api_example = b.addExecutable(.{
+        .name = "c-api-example",
+        .target = target,
+        .optimize = optimize,
+    });
+
+    c_api_example.linkLibrary(sdl);
+    c_api_example.installLibraryHeaders(sdl);
+
+    c_api_example.linkLibCpp();
+    c_api_example.linkLibrary(lib);
+    c_api_example.installLibraryHeaders(lib);
+    c_api_example.root_module.addCMacro("TVG_STATIC", "");
+    c_api_example.root_module.addCMacro("EXAMPLE_DIR", b.fmt("\"{s}\"", .{
+        PathFormatter{ .path = upstream.path("examples/resources").getPath(b) },
+    }));
+    c_api_example.addCSourceFile(.{
+        .file = upstream.path("examples/Capi.cpp"),
+        .flags = flags,
+    });
+
+    b.installArtifact(c_api_example);
+
+    const run_c_api_example = b.addRunArtifact(c_api_example);
+    if (b.args) |args| run_c_api_example.addArgs(args);
+
+    const example_step = b.step("example", "Run C API example");
+    example_step.dependOn(&run_c_api_example.step);
 }
+
+const PathFormatter = struct {
+    path: []const u8,
+
+    pub fn format(
+        formatter: PathFormatter,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt; // autofix
+        _ = options; // autofix
+        for (formatter.path) |char| {
+            if (char == '\\')
+                try writer.writeAll("\\\\")
+            else
+                try writer.writeByte(char);
+        }
+    }
+};
 
 const flags = &.{"-std=c++14"};
 
@@ -251,6 +341,20 @@ const sw_engine_sources = &.{
     "tvgSwRle.cpp",
     "tvgSwShape.cpp",
     "tvgSwStroke.cpp",
+};
+
+const gl_engine_sources = &.{
+    "tvgGl.cpp",
+    "tvgGlGeometry.cpp",
+    "tvgGlGpuBuffer.cpp",
+    "tvgGlProgram.cpp",
+    "tvgGlRenderer.cpp",
+    "tvgGlRenderPass.cpp",
+    "tvgGlRenderTarget.cpp",
+    "tvgGlRenderTask.cpp",
+    "tvgGlShader.cpp",
+    "tvgGlShaderSrc.cpp",
+    "tvgGlTessellator.cpp",
 };
 
 const loaders_svg_sources = &.{

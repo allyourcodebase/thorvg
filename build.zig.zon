@@ -3,8 +3,16 @@
     .version = "0.0.0",
     .dependencies = .{
         .thorvg = .{
-            .url = "git+https://github.com/thorvg/thorvg#v1.0-pre2",
-            .hash = "1220abcf085186487d24cfb1eb1a36627030ea950fd28e1f9e7ff64f9053512674be",
+            // Change back when I PR the C API + OpenGL changes
+            // and https://github.com/thorvg/thorvg/pull/2866 is merged
+            .url = "git+https://github.com/SuperAuguste/thorvg#e4e065b82c154d330e3fab839867bfddc540aacf",
+            .hash = "1220cc3c4b986895a3478be4647a434fc8ab2a2e3dcd26749f4e6ef22baab93426a2",
+        },
+        // Upstream dev
+        .sdl = .{
+            .url = "git+https://github.com/allyourcodebase/SDL#1f33c11a0b6023234732e4a751499694be554141",
+            .hash = "1220205e1f89c692800ebe01edb09bba8f314368bbd7562d6807bb210d43aea1a347",
+            .lazy = true,
         },
     },
 
