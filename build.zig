@@ -80,12 +80,14 @@ pub fn build(b: *std.Build) !void {
     lib.root_module.sanitize_c = false;
 
     lib.linkLibCpp();
+    lib.root_module.addCMacro("_USE_MATH_DEFINES", "1");
 
     const config_h = b.addConfigHeader(.{
         .include_path = "config.h",
     }, .{
         .THORVG_VERSION_STRING = version,
         .THORVG_CAPI_BINDING_SUPPORT = 1,
+        .THORVG_FILE_IO_SUPPORT = 1,
         .WIN32_LEAN_AND_MEAN = 1,
     });
 
@@ -113,13 +115,16 @@ pub fn build(b: *std.Build) !void {
     if (threads) {
         config_h.addValues(.{ .THORVG_THREAD_SUPPORT = 1 });
 
-        if (target.result.os.tag != .windows and !target.result.isAndroid()) {
+        if (target.result.os.tag != .windows and !target.result.abi.isAndroid()) {
             lib.linkSystemLibrary("pthread");
         }
     }
 
+    if (b.option(bool, "verbose-logging", "Verbose ThorVG logs") orelse false) {
+        config_h.addValues(.{ .THORVG_LOG_ENABLED = 1 });
+    }
+
     lib.addConfigHeader(config_h);
-    lib.installConfigHeader(config_h);
 
     lib.addIncludePath(upstream.path("inc"));
     lib.addIncludePath(upstream.path("src/common"));
@@ -145,6 +150,8 @@ pub fn build(b: *std.Build) !void {
     }
 
     if (engine_set.contains(.gl)) {
+        // TODO: Support GLES
+        config_h.addValues(.{ .THORVG_GL_TARGET_GL = 1 });
         lib.addIncludePath(b.path("include"));
         lib.addIncludePath(upstream.path("src/renderer/gl_engine"));
         lib.addCSourceFiles(.{
@@ -218,7 +225,7 @@ pub fn build(b: *std.Build) !void {
 
     tests.linkLibCpp();
     tests.linkLibrary(lib);
-    tests.installLibraryHeaders(lib);
+    tests.addConfigHeader(config_h);
     tests.root_module.addCMacro("TVG_STATIC", "");
     tests.root_module.addCMacro("TEST_DIR", b.fmt("\"{s}\"", .{
         PathFormatter{ .path = upstream.path("test/resources").getPath(b) },
@@ -235,46 +242,51 @@ pub fn build(b: *std.Build) !void {
     const test_step = b.step("test", "Run thorvg tests");
     test_step.dependOn(&run_tests.step);
 
-    // Upstream dev
-    if (!upstream_dev) return;
+    if (upstream_dev) {
+        const sdl_dep = b.lazyDependency("sdl", .{
+            .target = target,
+            .optimize = optimize,
+        }) orelse return;
 
-    const sdl_dep = b.lazyDependency("sdl", .{
-        .target = target,
-        .optimize = optimize,
-    });
+        const sdl = sdl_dep.artifact("SDL2");
 
-    if (sdl_dep == null) return;
+        const c_api_example = b.addExecutable(.{
+            .name = "c-api-example",
+            .target = target,
+            .optimize = optimize,
+        });
 
-    const sdl = sdl_dep.?.artifact("SDL2");
+        c_api_example.linkLibrary(sdl);
 
-    const c_api_example = b.addExecutable(.{
-        .name = "c-api-example",
-        .target = target,
-        .optimize = optimize,
-    });
+        c_api_example.linkLibCpp();
+        c_api_example.linkLibrary(lib);
+        c_api_example.root_module.addCMacro("TVG_STATIC", "");
+        c_api_example.root_module.addCMacro("EXAMPLE_DIR", b.fmt("\"{s}\"", .{
+            PathFormatter{ .path = upstream.path("examples/resources").getPath(b) },
+        }));
 
-    c_api_example.linkLibrary(sdl);
-    c_api_example.installLibraryHeaders(sdl);
+        if (engine_set.contains(.gl)) {
+            c_api_example.addCSourceFile(.{
+                .file = b.path("CapiExampleGl.cpp"),
+                .flags = flags,
+            });
+        } else if (engine_set.contains(.sw)) {
+            c_api_example.addCSourceFile(.{
+                .file = upstream.path("examples/Capi.cpp"),
+                .flags = flags,
+            });
+        } else {
+            @panic("No example available to run");
+        }
 
-    c_api_example.linkLibCpp();
-    c_api_example.linkLibrary(lib);
-    c_api_example.installLibraryHeaders(lib);
-    c_api_example.root_module.addCMacro("TVG_STATIC", "");
-    c_api_example.root_module.addCMacro("EXAMPLE_DIR", b.fmt("\"{s}\"", .{
-        PathFormatter{ .path = upstream.path("examples/resources").getPath(b) },
-    }));
-    c_api_example.addCSourceFile(.{
-        .file = upstream.path("examples/Capi.cpp"),
-        .flags = flags,
-    });
+        b.installArtifact(c_api_example);
 
-    b.installArtifact(c_api_example);
+        const run_c_api_example = b.addRunArtifact(c_api_example);
+        if (b.args) |args| run_c_api_example.addArgs(args);
 
-    const run_c_api_example = b.addRunArtifact(c_api_example);
-    if (b.args) |args| run_c_api_example.addArgs(args);
-
-    const example_step = b.step("example", "Run C API example");
-    example_step.dependOn(&run_c_api_example.step);
+        const example_step = b.step("example", "Run C API example");
+        example_step.dependOn(&run_c_api_example.step);
+    }
 }
 
 const PathFormatter = struct {
@@ -286,11 +298,11 @@ const PathFormatter = struct {
         options: std.fmt.FormatOptions,
         writer: anytype,
     ) !void {
-        _ = fmt; // autofix
-        _ = options; // autofix
+        _ = fmt;
+        _ = options;
         for (formatter.path) |char| {
             if (char == '\\')
-                try writer.writeAll("\\\\")
+                try writer.writeAll("/")
             else
                 try writer.writeByte(char);
         }

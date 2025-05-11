@@ -1,25 +1,21 @@
 .{
-    .name = "thorvg",
-    .version = "0.0.0",
+    .name = .thorvg,
+    .version = "1.0.0-pre20",
+    .fingerprint = 0x16b0a3189c6c2a66,
     .dependencies = .{
         .thorvg = .{
             // Change back when I PR the C API + OpenGL changes
             // and https://github.com/thorvg/thorvg/pull/2866 is merged
-            .url = "git+https://github.com/SuperAuguste/thorvg#e4e065b82c154d330e3fab839867bfddc540aacf",
-            .hash = "1220cc3c4b986895a3478be4647a434fc8ab2a2e3dcd26749f4e6ef22baab93426a2",
+            .url = "git+https://github.com/thorvg/thorvg#v1.0-pre20",
+            .hash = "N-V-__8AAChOPAdj6sQ4bgnduUqITzMOXd45ZrwAlswoTkcQ",
         },
         // Upstream dev
         .sdl = .{
-            .url = "git+https://github.com/allyourcodebase/SDL#1f33c11a0b6023234732e4a751499694be554141",
-            .hash = "1220205e1f89c692800ebe01edb09bba8f314368bbd7562d6807bb210d43aea1a347",
+            .url = "git+https://github.com/allyourcodebase/SDL#35d2548e41d5c3ea1e6bd22631b1ff1d352fd174",
+            .hash = "SDL-2.32.6-JToi3zqUEgG6r4ADMT5x-s1d5htGsWVMCJorr3GWEvLw",
             .lazy = true,
         },
     },
 
-    .paths = .{
-        "LICENSE",
-        "README.md",
-        "build.zig",
-        "build.zig.zon",
-    },
+    .paths = .{""},
 }
