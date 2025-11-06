@@ -71,13 +71,15 @@ pub fn build(b: *std.Build) !void {
 
     const upstream = b.dependency("thorvg", .{});
 
-    const lib = b.addStaticLibrary(.{
+    const lib = b.addLibrary(.{
         .name = "thorvg",
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+        }),
     });
 
-    lib.root_module.sanitize_c = false;
+    lib.root_module.sanitize_c = .off;
 
     lib.linkLibCpp();
     lib.root_module.addCMacro("_USE_MATH_DEFINES", "1");
@@ -217,17 +219,19 @@ pub fn build(b: *std.Build) !void {
 
     const tests = b.addExecutable(.{
         .name = "thorvg-tests",
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+        }),
     });
 
-    tests.root_module.sanitize_c = false;
+    tests.root_module.sanitize_c = .off;
 
     tests.linkLibCpp();
     tests.linkLibrary(lib);
     tests.addConfigHeader(config_h);
     tests.root_module.addCMacro("TVG_STATIC", "");
-    tests.root_module.addCMacro("TEST_DIR", b.fmt("\"{s}\"", .{
+    tests.root_module.addCMacro("TEST_DIR", b.fmt("\"{f}\"", .{
         PathFormatter{ .path = upstream.path("test/resources").getPath(b) },
     }));
     tests.addCSourceFiles(.{
@@ -252,8 +256,10 @@ pub fn build(b: *std.Build) !void {
 
         const c_api_example = b.addExecutable(.{
             .name = "c-api-example",
-            .target = target,
-            .optimize = optimize,
+            .root_module = b.createModule(.{
+                .target = target,
+                .optimize = optimize,
+            }),
         });
 
         c_api_example.linkLibrary(sdl);
@@ -261,7 +267,7 @@ pub fn build(b: *std.Build) !void {
         c_api_example.linkLibCpp();
         c_api_example.linkLibrary(lib);
         c_api_example.root_module.addCMacro("TVG_STATIC", "");
-        c_api_example.root_module.addCMacro("EXAMPLE_DIR", b.fmt("\"{s}\"", .{
+        c_api_example.root_module.addCMacro("EXAMPLE_DIR", b.fmt("\"{f}\"", .{
             PathFormatter{ .path = upstream.path("examples/resources").getPath(b) },
         }));
 
@@ -294,12 +300,8 @@ const PathFormatter = struct {
 
     pub fn format(
         formatter: PathFormatter,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
+        writer: *std.io.Writer,
     ) !void {
-        _ = fmt;
-        _ = options;
         for (formatter.path) |char| {
             if (char == '\\')
                 try writer.writeAll("/")
