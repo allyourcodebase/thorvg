@@ -6,8 +6,8 @@
         .thorvg = .{
             // Change back when I PR the C API + OpenGL changes
             // and https://github.com/thorvg/thorvg/pull/2866 is merged
-            .url = "git+https://github.com/thorvg/thorvg#v1.0-pre20",
-            .hash = "N-V-__8AAChOPAdj6sQ4bgnduUqITzMOXd45ZrwAlswoTkcQ",
+            .url = "git+https://github.com/thorvg/thorvg?ref=v1.0-pre32#cf1557c70bad7fd251342618b0fe50814f04377d",
+            .hash = "N-V-__8AAG27XATHWIxvr0Rtvv6ZMjXLtfkCaxVG3srEE9dN",
         },
         // Upstream dev
         .sdl = .{
