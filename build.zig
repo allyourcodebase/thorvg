@@ -314,6 +314,7 @@ const PathFormatter = struct {
 const flags = &.{"-std=c++14"};
 
 const sources = &.{
+    "common/tvgColor.cpp",
     "common/tvgCompressor.cpp",
     "common/tvgMath.cpp",
     "common/tvgStr.cpp",
@@ -322,7 +323,6 @@ const sources = &.{
     "renderer/tvgAnimation.cpp",
     "renderer/tvgCanvas.cpp",
     "renderer/tvgFill.cpp",
-    "renderer/tvgGlCanvas.cpp",
     "renderer/tvgInitializer.cpp",
     "renderer/tvgLoader.cpp",
     "renderer/tvgPaint.cpp",
@@ -331,10 +331,8 @@ const sources = &.{
     "renderer/tvgSaver.cpp",
     "renderer/tvgScene.cpp",
     "renderer/tvgShape.cpp",
-    "renderer/tvgSwCanvas.cpp",
     "renderer/tvgTaskScheduler.cpp",
     "renderer/tvgText.cpp",
-    "renderer/tvgWgCanvas.cpp",
 
     "loaders/raw/tvgRawLoader.cpp",
 };
@@ -354,6 +352,7 @@ const sw_engine_sources = &.{
 
 const gl_engine_sources = &.{
     "tvgGl.cpp",
+    "tvgGlEffect.cpp",
     "tvgGlGeometry.cpp",
     "tvgGlGpuBuffer.cpp",
     "tvgGlProgram.cpp",
