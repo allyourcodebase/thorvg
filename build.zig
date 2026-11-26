@@ -1,6 +1,7 @@
 const std = @import("std");
-
-const version = "1.0.0";
+const builtin = @import("builtin");
+const sources = @import("src/thorvg.zon");
+const version = "1.1.4";
 
 pub const Engine = enum {
     pub const all_engines = &[_]Engine{ .sw, .gl, .wg };
@@ -12,15 +13,17 @@ pub const Engine = enum {
 };
 
 pub const Loader = enum {
-    pub const all_loaders = &[_]Loader{ .svg, .png, .jpg, .lottie, .ttf, .webp };
-    pub const default_loaders = &[_]Loader{ .svg, .lottie, .ttf };
+    pub const all_loaders = &[_]Loader{ .svg, .png, .jpg, .lottie, .sfnt, .otf, .webp, .gif, .media };
+    pub const default_loaders = &[_]Loader{ .svg, .lottie, .sfnt };
 
     svg,
     png,
     jpg,
     lottie,
-    ttf,
+    sfnt,
     webp,
+    gif,
+    media,
 };
 
 pub const Saver = enum {
@@ -30,12 +33,20 @@ pub const Saver = enum {
     gif,
 };
 
+pub const Extra = enum {
+    pub const default_extras = &[_]Extra{};
+
+    openmp,
+    opengl_es,
+};
+
 // TODO: Remove sanitize_c, path stripping function in common tvgStr causing UB
 
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const static = b.option(bool, "static", "Build as static library") orelse true;
     const upstream_dev = b.option(
         bool,
         "upstream-dev",
@@ -63,6 +74,13 @@ pub fn build(b: *std.Build) !void {
     ) orelse Saver.default_savers;
     const saver_set = std.EnumSet(Saver).initMany(savers);
 
+    const extras = b.option(
+        []const Extra,
+        "extras",
+        "Which extra features should be enabled?",
+    ) orelse Extra.default_extras;
+    const extra_set = std.EnumSet(Extra).initMany(extras);
+
     const threads = b.option(
         bool,
         "threads",
@@ -76,12 +94,11 @@ pub fn build(b: *std.Build) !void {
         .root_module = b.createModule(.{
             .target = target,
             .optimize = optimize,
+            .link_libcpp = true,
         }),
     });
 
     lib.root_module.sanitize_c = .off;
-
-    lib.linkLibCpp();
     lib.root_module.addCMacro("_USE_MATH_DEFINES", "1");
 
     const config_h = b.addConfigHeader(.{
@@ -94,31 +111,42 @@ pub fn build(b: *std.Build) !void {
     });
 
     for (engines) |engine| try config_h.values.put(
-        b.fmt("THORVG_{s}_RASTER_SUPPORT", .{
+        b.allocator,
+        b.fmt("THORVG_{s}_ENGINE_SUPPORT", .{
             try std.ascii.allocUpperString(b.allocator, @tagName(engine)),
         }),
         .{ .int = 1 },
     );
 
-    for (loaders) |loader| try config_h.values.put(
-        b.fmt("THORVG_{s}_LOADER_SUPPORT", .{
-            try std.ascii.allocUpperString(b.allocator, @tagName(loader)),
-        }),
-        .{ .int = 1 },
-    );
+    for (loaders) |loader| {
+        try config_h.values.put(
+            b.allocator,
+            b.fmt("THORVG_{s}_LOADER_SUPPORT", .{
+                try std.ascii.allocUpperString(b.allocator, @tagName(loader)),
+            }),
+            .{ .int = 1 },
+        );
+    }
+    if (loader_set.contains(.sfnt)) {
+        config_h.addValues(.{ .THORVG_SFNT_LOADER_SUPPORT = 1 });
+    }
 
     for (savers) |saver| try config_h.values.put(
+        b.allocator,
         b.fmt("THORVG_{s}_SAVER_SUPPORT", .{
             try std.ascii.allocUpperString(b.allocator, @tagName(saver)),
         }),
         .{ .int = 1 },
     );
 
+    if (extra_set.contains(.openmp)) {
+        config_h.addValues(.{ .THORVG_OPENMP_SUPPORT = 1 });
+    }
+
     if (threads) {
         config_h.addValues(.{ .THORVG_THREAD_SUPPORT = 1 });
-
         if (target.result.os.tag != .windows and !target.result.abi.isAndroid()) {
-            lib.linkSystemLibrary("pthread");
+            lib.root_module.linkSystemLibrary("pthread", .{});
         }
     }
 
@@ -126,27 +154,30 @@ pub fn build(b: *std.Build) !void {
         config_h.addValues(.{ .THORVG_LOG_ENABLED = 1 });
     }
 
-    lib.addConfigHeader(config_h);
+    lib.root_module.addConfigHeader(config_h);
 
-    lib.addIncludePath(upstream.path("inc"));
-    lib.addIncludePath(upstream.path("src/common"));
-    lib.addIncludePath(upstream.path("src/renderer"));
-    lib.addIncludePath(upstream.path("src/loaders/raw"));
+    lib.root_module.addIncludePath(upstream.path("inc"));
+    lib.root_module.addIncludePath(upstream.path("src/common"));
+    lib.root_module.addIncludePath(upstream.path("src/renderer"));
+    lib.root_module.addIncludePath(upstream.path("src/modules/raw"));
 
     lib.installHeadersDirectory(upstream.path("inc"), "", .{});
 
-    lib.root_module.addCMacro("TVG_STATIC", "");
-    lib.addCSourceFiles(.{
-        .files = sources,
-        .root = upstream.path("src"),
+    if (static) {
+        lib.root_module.addCMacro("TVG_STATIC", "");
+    }
+
+    lib.root_module.addCSourceFiles(.{
+        .files = &sources.common,
+        .root = upstream.path("src/common"),
         .flags = flags,
     });
 
     if (engine_set.contains(.sw)) {
-        lib.addIncludePath(upstream.path("src/renderer/sw_engine"));
-        lib.addCSourceFiles(.{
-            .files = sw_engine_sources,
-            .root = upstream.path("src/renderer/sw_engine"),
+        lib.root_module.addIncludePath(upstream.path("src/renderer/cpu_engine"));
+        lib.root_module.addCSourceFiles(.{
+            .files = &sources.renderer.cpu_engine,
+            .root = upstream.path("src/renderer/cpu_engine"),
             .flags = flags,
         });
     }
@@ -154,63 +185,181 @@ pub fn build(b: *std.Build) !void {
     if (engine_set.contains(.gl)) {
         // TODO: Support GLES
         config_h.addValues(.{ .THORVG_GL_TARGET_GL = 1 });
-        lib.addIncludePath(b.path("include"));
-        lib.addIncludePath(upstream.path("src/renderer/gl_engine"));
-        lib.addCSourceFiles(.{
-            .files = gl_engine_sources,
-            .root = upstream.path("src/renderer/gl_engine"),
+        lib.root_module.addIncludePath(b.path("include"));
+        lib.root_module.addIncludePath(upstream.path("src/renderer/gpu_engine/gl"));
+        lib.root_module.addCSourceFiles(.{
+            .files = &sources.renderer.gpu_engine.gl,
+            .root = upstream.path("src/renderer/gpu_engine/gl"),
             .flags = flags,
         });
     }
 
     if (engine_set.contains(.wg)) {
-        @panic("TODO: support wg engine");
-    }
-
-    if (loader_set.contains(.svg)) {
-        lib.addIncludePath(upstream.path("src/loaders/svg"));
-        lib.addCSourceFiles(.{
-            .files = loaders_svg_sources,
-            .root = upstream.path("src/loaders/svg"),
+        lib.root_module.addIncludePath(upstream.path("src/renderer/gpu_engine/wg"));
+        lib.root_module.addCSourceFiles(.{
+            .files = &sources.renderer.gpu_engine.wg,
+            .root = upstream.path("src/renderer/gpu_engine/gl"),
             .flags = flags,
         });
     }
 
-    if (loader_set.contains(.lottie)) {
-        lib.addIncludePath(upstream.path("src/loaders/lottie"));
-        lib.installHeader(upstream.path("src/loaders/lottie/thorvg_lottie.h"), "thorvg_lottie.h");
-        lib.addCSourceFiles(.{
-            .files = loaders_lottie_sources,
-            .root = upstream.path("src/loaders/lottie"),
+    if (engine_set.contains(.gl) or engine_set.contains(.wg)) {
+        lib.root_module.addIncludePath(upstream.path("src/renderer/gpu_engine"));
+        lib.root_module.addCSourceFiles(.{
+            .files = &sources.renderer.gpu_engine.files,
+            .root = upstream.path("src/renderer/gpu_engine"),
             .flags = flags,
         });
     }
 
-    if (loader_set.contains(.ttf)) {
-        lib.addIncludePath(upstream.path("src/loaders/ttf"));
-        lib.addCSourceFiles(.{
-            .files = loaders_ttf_sources,
-            .root = upstream.path("src/loaders/ttf"),
+    const mods_path = upstream.path("src/modules");
+
+    if (loader_set.contains(.gif)) {
+        const gifload_path = mods_path.path(b, "gif/load");
+        lib.root_module.addIncludePath(gifload_path);
+        lib.root_module.addCSourceFiles(.{
+            .files = &sources.modules.gif.load,
+            .root = gifload_path,
             .flags = flags,
         });
-    }
-
-    if (loader_set.contains(.png) or loader_set.contains(.jpg) or loader_set.contains(.webp)) {
-        @panic("TODO: support png, jpg, and webp loadesr");
     }
 
     if (saver_set.contains(.gif)) {
-        lib.addIncludePath(upstream.path("src/savers/gif"));
-        lib.addCSourceFiles(.{
-            .files = savers_gif_sources,
-            .root = upstream.path("src/savers/gif"),
+        const gifsave_path = mods_path.path(b, "gif/save");
+        lib.root_module.addIncludePath(gifsave_path);
+        lib.root_module.addCSourceFiles(.{
+            .files = &sources.modules.gif.save,
+            .root = gifsave_path,
             .flags = flags,
         });
     }
 
+    if (loader_set.contains(.jpg)) {
+        if (static) {
+            const jpeg_path = mods_path.path(b, "jpg/static");
+            lib.root_module.addIncludePath(jpeg_path);
+            lib.root_module.addCSourceFiles(.{
+                .files = &sources.modules.jpg.static,
+                .root = jpeg_path,
+                .flags = flags,
+            });
+        } else {
+            const jpeg_path = mods_path.path(b, "jpg/external");
+            lib.root_module.linkSystemLibrary("turbojpeg", .{});
+            lib.root_module.addIncludePath(jpeg_path);
+            lib.root_module.addCSourceFiles(.{
+                .files = &sources.modules.jpg.external,
+                .root = jpeg_path,
+                .flags = flags,
+            });
+        }
+    }
+
+    if (loader_set.contains(.lottie)) {
+        const lottie_path = mods_path.path(b, "lottie");
+        // TODO: Support Lottie expressions
+        lib.root_module.addIncludePath(lottie_path);
+        lib.installHeader(lottie_path.path(b, "thorvg_lottie.h"), "thorvg_lottie.h");
+        lib.root_module.addCSourceFiles(.{
+            .files = &sources.modules.lottie,
+            .root = lottie_path,
+            .flags = flags,
+        });
+    }
+
+    // Experimental video loader
+    if (loader_set.contains(.media)) {
+        const media_path = mods_path.path(b, "media");
+        lib.root_module.addIncludePath(media_path);
+        lib.root_module.addCSourceFiles(.{
+            .files = &sources.modules.media.files,
+            .root = media_path,
+            .flags = flags,
+        });
+
+        if (builtin.os.tag == .emscripten) {
+            lib.root_module.addIncludePath(media_path(b, "web"));
+            lib.root_module.addCSourceFiles(.{
+                .files = &sources.modules.media.web,
+                .root = media_path(b, "web"),
+                .flags = flags,
+            });
+        } else if (builtin.os.tag == .ios or builtin.os.tag == .tvos) {
+            lib.root_module.addIncludePath(media_path(b, "apple"));
+            lib.root_module.addCSourceFiles(.{
+                .files = &sources.modules.media.apple,
+                .root = media_path(b, "apple"),
+                .flags = flags,
+            });
+        }
+        // TODO: Android module here
+    }
+
+    if (loader_set.contains(.sfnt)) {
+        const sfnt_path = mods_path.path(b, "sfnt");
+        lib.root_module.addIncludePath(sfnt_path);
+        lib.root_module.addCSourceFiles(.{
+            .files = &sources.modules.sfnt,
+            .root = sfnt_path,
+            .flags = flags,
+        });
+    }
+
+    if (loader_set.contains(.svg)) {
+        const svg_path = mods_path.path(b, "svg");
+        lib.root_module.addIncludePath(svg_path);
+        lib.root_module.addCSourceFiles(.{
+            .files = &sources.modules.svg,
+            .root = svg_path,
+            .flags = flags,
+        });
+    }
+
+    if (loader_set.contains(.webp)) {
+        if (static) {
+            const webp_path = mods_path.path(b, "webp/static");
+            lib.root_module.addIncludePath(webp_path);
+            lib.root_module.addIncludePath(webp_path.path(b, "webp"));
+            lib.root_module.addCSourceFiles(.{
+                .files = &sources.modules.webp.static.files,
+                .root = webp_path,
+                .flags = flags,
+            });
+
+            lib.root_module.addIncludePath(webp_path.path(b, "dec"));
+            lib.root_module.addCSourceFiles(.{
+                .files = &sources.modules.webp.static.dec,
+                .root = webp_path.path(b, "dec"),
+                .flags = flags,
+            });
+
+            lib.root_module.addIncludePath(webp_path.path(b, "dsp"));
+            lib.root_module.addCSourceFiles(.{
+                .files = &sources.modules.webp.static.dsp,
+                .root = webp_path.path(b, "dsp"),
+                .flags = flags,
+            });
+            lib.root_module.addIncludePath(webp_path.path(b, "utils"));
+            lib.root_module.addCSourceFiles(.{
+                .files = &sources.modules.webp.static.utils,
+                .root = webp_path.path(b, "utils"),
+                .flags = flags,
+            });
+        } else {
+            const webp_path = mods_path.path(b, "webp/external");
+            lib.root_module.addIncludePath(webp_path);
+            lib.root_module.addCSourceFiles(.{
+                .files = &sources.modules.webp.external,
+                .root = webp_path,
+                .flags = flags,
+            });
+            lib.root_module.linkSystemLibrary("webp", .{});
+        }
+    }
+
     lib.installHeadersDirectory(upstream.path("src/bindings/capi"), "", .{});
-    lib.addIncludePath(upstream.path("src/bindings/capi"));
-    lib.addCSourceFile(.{
+    lib.root_module.addIncludePath(upstream.path("src/bindings/capi"));
+    lib.root_module.addCSourceFile(.{
         .file = upstream.path("src/bindings/capi/tvgCapi.cpp"),
         .flags = flags,
     });
@@ -222,28 +371,37 @@ pub fn build(b: *std.Build) !void {
         .root_module = b.createModule(.{
             .target = target,
             .optimize = optimize,
+            .link_libcpp = true,
         }),
     });
-
     tests.root_module.sanitize_c = .off;
 
-    tests.linkLibCpp();
-    tests.linkLibrary(lib);
-    tests.addConfigHeader(config_h);
-    tests.root_module.addCMacro("TVG_STATIC", "");
+    const test_step = b.step("test", "Run thorvg tests");
+
+    tests.root_module.linkLibrary(lib);
+    tests.root_module.addConfigHeader(config_h);
+
+    if (static) {
+        tests.root_module.addCMacro("TVG_STATIC", "");
+    }
+
+    var path_writer: std.Io.Writer.Allocating = std.Io.Writer.Allocating.init(b.allocator);
+    try upstream.path("test/resources").format(&path_writer.writer);
+    var path_string = path_writer.toArrayList();
+
     tests.root_module.addCMacro("TEST_DIR", b.fmt("\"{f}\"", .{
-        PathFormatter{ .path = upstream.path("test/resources").getPath(b) },
+        PathFormatter{ .path = path_string.items },
     }));
-    tests.addCSourceFiles(.{
+    tests.root_module.addCSourceFiles(.{
         .files = test_sources,
         .root = upstream.path("test"),
         .flags = flags,
     });
+    path_string.deinit(b.allocator);
 
     const run_tests = b.addRunArtifact(tests);
-    if (b.args) |args| run_tests.addArgs(args);
+    run_tests.addPassthruArgs();
 
-    const test_step = b.step("test", "Run thorvg tests");
     test_step.dependOn(&run_tests.step);
 
     if (upstream_dev) {
@@ -259,25 +417,28 @@ pub fn build(b: *std.Build) !void {
             .root_module = b.createModule(.{
                 .target = target,
                 .optimize = optimize,
+                .link_libcpp = true,
             }),
         });
 
-        c_api_example.linkLibrary(sdl);
+        try upstream.path("examples/resources").format(&path_writer.writer);
+        path_string = path_writer.toArrayList();
 
-        c_api_example.linkLibCpp();
-        c_api_example.linkLibrary(lib);
+        c_api_example.root_module.linkLibrary(sdl);
+        c_api_example.root_module.linkLibrary(lib);
         c_api_example.root_module.addCMacro("TVG_STATIC", "");
         c_api_example.root_module.addCMacro("EXAMPLE_DIR", b.fmt("\"{f}\"", .{
-            PathFormatter{ .path = upstream.path("examples/resources").getPath(b) },
+            PathFormatter{ .path = path_string.items },
         }));
+        path_string.deinit(b.allocator);
 
         if (engine_set.contains(.gl)) {
-            c_api_example.addCSourceFile(.{
+            c_api_example.root_module.addCSourceFile(.{
                 .file = b.path("CapiExampleGl.cpp"),
                 .flags = flags,
             });
         } else if (engine_set.contains(.sw)) {
-            c_api_example.addCSourceFile(.{
+            c_api_example.root_module.addCSourceFile(.{
                 .file = upstream.path("examples/Capi.cpp"),
                 .flags = flags,
             });
@@ -288,7 +449,7 @@ pub fn build(b: *std.Build) !void {
         b.installArtifact(c_api_example);
 
         const run_c_api_example = b.addRunArtifact(c_api_example);
-        if (b.args) |args| run_c_api_example.addArgs(args);
+        run_c_api_example.addPassthruArgs();
 
         const example_step = b.step("example", "Run C API example");
         example_step.dependOn(&run_c_api_example.step);
@@ -300,7 +461,7 @@ const PathFormatter = struct {
 
     pub fn format(
         formatter: PathFormatter,
-        writer: *std.io.Writer,
+        writer: *std.Io.Writer,
     ) !void {
         for (formatter.path) |char| {
             if (char == '\\')
@@ -312,90 +473,6 @@ const PathFormatter = struct {
 };
 
 const flags = &.{"-std=c++14"};
-
-const sources = &.{
-    "common/tvgCompressor.cpp",
-    "common/tvgMath.cpp",
-    "common/tvgStr.cpp",
-
-    "renderer/tvgAccessor.cpp",
-    "renderer/tvgAnimation.cpp",
-    "renderer/tvgCanvas.cpp",
-    "renderer/tvgFill.cpp",
-    "renderer/tvgGlCanvas.cpp",
-    "renderer/tvgInitializer.cpp",
-    "renderer/tvgLoader.cpp",
-    "renderer/tvgPaint.cpp",
-    "renderer/tvgPicture.cpp",
-    "renderer/tvgRender.cpp",
-    "renderer/tvgSaver.cpp",
-    "renderer/tvgScene.cpp",
-    "renderer/tvgShape.cpp",
-    "renderer/tvgSwCanvas.cpp",
-    "renderer/tvgTaskScheduler.cpp",
-    "renderer/tvgText.cpp",
-    "renderer/tvgWgCanvas.cpp",
-
-    "loaders/raw/tvgRawLoader.cpp",
-};
-
-const sw_engine_sources = &.{
-    "tvgSwFill.cpp",
-    "tvgSwImage.cpp",
-    "tvgSwMath.cpp",
-    "tvgSwMemPool.cpp",
-    "tvgSwPostEffect.cpp",
-    "tvgSwRaster.cpp",
-    "tvgSwRenderer.cpp",
-    "tvgSwRle.cpp",
-    "tvgSwShape.cpp",
-    "tvgSwStroke.cpp",
-};
-
-const gl_engine_sources = &.{
-    "tvgGl.cpp",
-    "tvgGlGeometry.cpp",
-    "tvgGlGpuBuffer.cpp",
-    "tvgGlProgram.cpp",
-    "tvgGlRenderer.cpp",
-    "tvgGlRenderPass.cpp",
-    "tvgGlRenderTarget.cpp",
-    "tvgGlRenderTask.cpp",
-    "tvgGlShader.cpp",
-    "tvgGlShaderSrc.cpp",
-    "tvgGlTessellator.cpp",
-};
-
-const loaders_svg_sources = &.{
-    "tvgSvgCssStyle.cpp",
-    "tvgSvgLoader.cpp",
-    "tvgSvgPath.cpp",
-    "tvgSvgSceneBuilder.cpp",
-    "tvgSvgUtil.cpp",
-    "tvgXmlParser.cpp",
-};
-
-const loaders_lottie_sources = &.{
-    "tvgLottieAnimation.cpp",
-    "tvgLottieBuilder.cpp",
-    "tvgLottieExpressions.cpp",
-    "tvgLottieInterpolator.cpp",
-    "tvgLottieLoader.cpp",
-    "tvgLottieModel.cpp",
-    "tvgLottieModifier.cpp",
-    "tvgLottieParserHandler.cpp",
-    "tvgLottieParser.cpp",
-};
-
-const loaders_ttf_sources = &.{
-    "tvgTtfLoader.cpp",
-    "tvgTtfReader.cpp",
-};
-
-const savers_gif_sources = &.{
-    "tvgGifEncoder.cpp",
-    "tvgGifSaver.cpp",
-};
 
 const test_sources = &.{
     "testAccessor.cpp",

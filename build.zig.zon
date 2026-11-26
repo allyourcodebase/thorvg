@@ -4,12 +4,9 @@
     .fingerprint = 0x16b0a3189c6c2a66,
     .dependencies = .{
         .thorvg = .{
-            // Change back when I PR the C API + OpenGL changes
-            // and https://github.com/thorvg/thorvg/pull/2866 is merged
-            .url = "git+https://github.com/thorvg/thorvg#v1.0-pre20",
-            .hash = "N-V-__8AAChOPAdj6sQ4bgnduUqITzMOXd45ZrwAlswoTkcQ",
+            .url = "git+https://github.com/thorvg/thorvg#v1.1.4",
+            .hash = "N-V-__8AAPqB1QASd6I2iKmld-xK5b0zcAOogs9Yfox7ZCtv",
         },
-        // Upstream dev
         .sdl = .{
             .url = "git+https://github.com/allyourcodebase/SDL#35d2548e41d5c3ea1e6bd22631b1ff1d352fd174",
             .hash = "SDL-2.32.6-JToi3zqUEgG6r4ADMT5x-s1d5htGsWVMCJorr3GWEvLw",

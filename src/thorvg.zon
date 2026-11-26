@@ -1,0 +1,198 @@
+.{
+    .common = .{
+        "tvgArray.cpp",
+        "tvgCompressor.cpp",
+        "tvgMath.cpp",
+        "tvgStr.cpp",
+    },
+    .bindings = .{
+        .capi = .{
+            "tvgCapi.cpp",
+        },
+    },
+    .renderer = .{
+        .files = .{
+            "tvgAccessor.cpp",
+            "tvgAnimation.cpp",
+            "tvgCanvas.cpp",
+            "tvgFill.cpp",
+            "tvgInitializer.cpp",
+            "tvgLoaderMgr.cpp",
+            "tvgPaint.cpp",
+            "tvgPicture.cpp",
+            "tvgRender.cpp",
+            "tvgSaver.cpp",
+            "tvgScene.cpp",
+            "tvgShape.cpp",
+            "tvgSwCanvas.cpp",
+            "tvgTaskScheduler.cpp",
+            "tvgText.cpp",
+        },
+        .cpu_engine = .{
+            "tvgSwBlendOp.cpp",
+            "tvgSwFill.cpp",
+            "tvgSwImage.cpp",
+            "tvgSwMemPool.cpp",
+            "tvgSwPostEffect.cpp",
+            "tvgSwRaster.cpp",
+            "tvgSwRasterCore.cpp",
+            "tvgSwRasterSimd.cpp",
+            "tvgSwRenderer.cpp",
+            "tvgSwRle.cpp",
+            "tvgSwShape.cpp",
+            "tvgSwStroke.cpp",
+            "tvgSwUtil.cpp",
+        },
+        .gpu_engine = .{
+            .files = .{
+                "tvgGpuCommon.cpp",
+            },
+            .gl = .{
+                "tvgGl.cpp",
+                "tvgGlEffect.cpp",
+                "tvgGlGeometry.cpp",
+                "tvgGlGpuBuffer.cpp",
+                "tvgGlProgram.cpp",
+                "tvgGlRenderer.cpp",
+                "tvgGlRenderPass.cpp",
+                "tvgGlRenderTarget.cpp",
+                "tvgGlRenderTask.cpp",
+                "tvgGlShader.cpp",
+                "tvgGlShaderSrc.cpp",
+                "tvgGlSolidBatch.cpp",
+                "tvgGlStateCache.cpp",
+                "tvgGlStencilCoverBatch.cpp",
+                "tvgGlTessellator.cpp",
+                "tvgGlTextureMgr.cpp",
+            },
+            .wg = .{
+                "tvgWgBindGroups.cpp",
+                "tvgWgCommon.cpp",
+                "tvgWgCompositor.cpp",
+                "tvgWgMesh.cpp",
+                "tvgWgRenderData.cpp",
+                "tvgWgRenderer.cpp",
+                "tvgWgRenderTarget.cpp",
+                "tvgWgRenderTask.cpp",
+                "tvgWgShaderSrc.cpp",
+                "tvgWgShaderTypes.cpp",
+                "tvgWgSolidBatch.cpp",
+                "tvgWgStencilBatch.cpp",
+                "tvgWgTessellator.cpp",
+                "tvgWgTextureMgr.cpp",
+            },
+        },
+    },
+    .modules = .{
+        .gif = .{
+            .load = .{
+                "tvgGifDecoder.cpp",
+                "tvgGifLoader.cpp",
+            },
+            .save = .{
+                "tvgGifEncoder.cpp",
+                "tvgGifSaver.cpp",
+            },
+        },
+        .jpg = .{
+            .external = .{
+                "tvgJpgLoader.cpp",
+            },
+            .static = .{
+                "tvgJpgd.cpp",
+                "tvgJpgLoader.cpp",
+            },
+        },
+        // TODO: To support Lottie expressions we need to pull in two large c libraries below this
+        .lottie = .{
+            "tvgLottieAnimation.cpp",
+            "tvgLottieBuilder.cpp",
+            "tvgLottieExpressions.cpp",
+            "tvgLottieInterpolator.cpp",
+            "tvgLottieLoader.cpp",
+            "tvgLottieModel.cpp",
+            "tvgLottieModifier.cpp",
+            "tvgLottieParser.cpp",
+            "tvgLottieParserHandler.cpp",
+            "tvgLottieProperty.cpp",
+        },
+        .media = .{
+            .files = .{
+                "tvgVideo.cpp",
+                "tvgMediaLoader.cpp",
+            },
+            .web = .{
+                "tvgWebMediaLoader.cpp",
+            },
+            .apple = .{"tvgAvfMediaLoader.mm"},
+            .android = .{
+                "tvgAndroidMediaAudioSink.cpp",
+                "tvgAndroidMediaDecoder.cpp",
+                "tvgAndroidMediaLoader.cpp",
+            },
+        },
+        .png = .{
+            .external = .{
+                "tvgPngLoader.cpp",
+            },
+            .static = .{
+                "tvgLodePng.cpp",
+                "tvgLodePngUtil.cpp",
+                "tvgPngLoader.cpp",
+            },
+            .raw = .{
+                "tvgRawLoader.cpp",
+            },
+        },
+        .sfnt = .{
+            "tvgOtfReader.cpp",
+            "tvgSfntLoader.cpp",
+            "tvgSfntReader.cpp",
+            "tvgTtfReader.cpp",
+        },
+        .svg = .{
+            "tvgSvgBuilder.cpp",
+            "tvgSvgCssStyle.cpp",
+            "tvgSvgLoader.cpp",
+            "tvgSvgPath.cpp",
+            "tvgSvgUtil.cpp",
+            "tvgXmlParser.cpp",
+        },
+        .webp = .{
+            .external = .{
+                "tvgWebpLoader.cpp",
+            },
+            // Static compilation brings in libwebp
+            .static = .{
+                .files = .{
+                    "tvgWebpLoader.cpp",
+                },
+                .dec = .{
+                    "alpha.cpp",
+                    "buffer.cpp",
+                    "frame.cpp",
+                    "io.cpp",
+                    "quant.cpp",
+                    "tree.cpp",
+                    "vp8.cpp",
+                    "vp8l.cpp",
+                    "webp.cpp",
+                },
+                .dsp = .{
+                    "alpha_processing.cpp",
+                    "cpu.cpp",
+                    "dec.cpp",
+                    "dec_clip_tables.cpp",
+                    "filters.cpp",
+                    "lossless.cpp",
+                    "yuv.cpp",
+                },
+                .utils = .{
+                    "bit_reader.cpp",
+                    "color_cache.cpp",
+                    "huffman.cpp",
+                },
+            },
+        },
+    },
+}
