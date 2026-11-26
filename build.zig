@@ -339,7 +339,7 @@ pub fn build(b: *std.Build) !void {
     }
 
     if (loader_set.contains(.lottie)) {
-        if (extra_set.contains(.lotte_expressions)) {
+        if (extra_set.contains(.lottie_expressions)) {
             @panic("Lottie expressions are not yet implemented!");
         }
 
