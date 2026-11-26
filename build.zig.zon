@@ -8,8 +8,8 @@
             .hash = "N-V-__8AAPqB1QASd6I2iKmld-xK5b0zcAOogs9Yfox7ZCtv",
         },
         .sdl = .{
-            .url = "git+https://github.com/allyourcodebase/SDL#35d2548e41d5c3ea1e6bd22631b1ff1d352fd174",
-            .hash = "SDL-2.32.6-JToi3zqUEgG6r4ADMT5x-s1d5htGsWVMCJorr3GWEvLw",
+            .url = "git+https://github.com/allyourcodebase/SDL?ref=SDL2#4b54f96ba8e9dfc6bfeb5dec4506b67065c95386",
+            .hash = "SDL-2.32.10-JToi39u3EgE-o_lxawFmKqPbHLhe_zQXiP3jnYAoQib3",
             .lazy = true,
         },
     },
