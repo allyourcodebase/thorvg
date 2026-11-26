@@ -36,6 +36,7 @@ pub const Saver = enum {
 pub const Extra = enum {
     pub const default_extras = &[_]Extra{};
 
+    lottie_expressions,
     openmp,
     opengl_es,
 };
@@ -219,6 +220,7 @@ pub fn build(b: *std.Build) !void {
             if (simd) {
                 if (extra_set.contains(.openmp)) {
                     config_h.addValues(.{ .THORVG_OPENMP_SUPPORT = 1 });
+                    @panic("OpenMP support is not yet implemented!");
                 }
 
                 lib.root_module.addCSourceFile(.{
@@ -337,8 +339,11 @@ pub fn build(b: *std.Build) !void {
     }
 
     if (loader_set.contains(.lottie)) {
+        if (extra_set.contains(.lotte_expressions)) {
+            @panic("Lottie expressions are not yet implemented!");
+        }
+
         const lottie_path = mods_path.path(b, "lottie");
-        // TODO: Support Lottie expressions
         lib.root_module.addIncludePath(lottie_path);
         lib.installHeader(lottie_path.path(b, "thorvg_lottie.h"), "thorvg_lottie.h");
         lib.root_module.addCSourceFiles(.{
