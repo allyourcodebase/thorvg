@@ -5,7 +5,7 @@ const version = "1.1.4";
 
 pub const Engine = enum {
     pub const all_engines = &[_]Engine{ .cpu, .gl, .wg };
-    pub const default_engines = &[_]Engine{ .cpu, .gl, .wg };
+    pub const default_engines = &[_]Engine{.cpu};
 
     cpu,
     gl,
@@ -13,14 +13,14 @@ pub const Engine = enum {
 };
 
 pub const Loader = enum {
-    pub const all_loaders = &[_]Loader{ .svg, .png, .jpg, .lottie, .sfnt, .otf, .webp, .gif, .media };
-    pub const default_loaders = &[_]Loader{ .svg, .lottie, .sfnt, .png, .jpg, .webp, .gif, .media };
+    pub const all_loaders = &[_]Loader{ .svg, .png, .jpg, .lottie, .ttf, .otf, .webp, .gif, .media };
+    pub const default_loaders = &[_]Loader{ .svg, .lottie, .ttf };
 
     svg,
     png,
     jpg,
     lottie,
-    sfnt,
+    ttf,
     webp,
     gif,
     media,
@@ -28,7 +28,7 @@ pub const Loader = enum {
 
 pub const Saver = enum {
     pub const all_savers = &[_]Saver{.gif};
-    pub const default_savers = &[_]Saver{.gif};
+    pub const default_savers = &[_]Saver{};
 
     gif,
 };
@@ -128,8 +128,8 @@ pub fn build(b: *std.Build) !void {
             .{ .int = 1 },
         );
     }
-    if (loader_set.contains(.sfnt)) {
-        config_h.addValues(.{ .THORVG_OTF_LOADER_SUPPORT = 1 });
+    if (loader_set.contains(.ttf)) {
+        config_h.addValues(.{ .THORVG_OTF_LOADER_SUPPORT = 1, .THORVG_SFNT_LOADER_SUPPORT = 1 });
     }
 
     for (savers) |saver| try config_h.values.put(
@@ -377,7 +377,7 @@ pub fn build(b: *std.Build) !void {
         // TODO: Android module here
     }
 
-    if (loader_set.contains(.sfnt)) {
+    if (loader_set.contains(.ttf)) {
         const sfnt_path = mods_path.path(b, "sfnt");
         lib.root_module.addIncludePath(sfnt_path);
         lib.root_module.addCSourceFiles(.{
