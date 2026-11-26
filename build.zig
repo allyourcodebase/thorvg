@@ -569,11 +569,6 @@ pub fn build(b: *std.Build) !void {
                 .file = b.path("CapiExampleGl.cpp"),
                 .flags = flags,
             });
-        } else if (engine_set.contains(.cpu)) {
-            c_api_example.root_module.addCSourceFile(.{
-                .file = upstream.path("examples/Capi.cpp"),
-                .flags = flags,
-            });
         } else {
             @panic("No example available to run");
         }
