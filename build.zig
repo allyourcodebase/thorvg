@@ -444,6 +444,10 @@ pub fn build(b: *std.Build) !void {
         }
     }
 
+    // Expose the c api headers for other bindings to use
+    const bindings_out = b.addNamedWriteFiles("bindings");
+    _ = bindings_out.addCopyFile(upstream.path("src/bindings/capi"), "thorvg_capi.h");
+
     lib.installHeadersDirectory(upstream.path("src/bindings/capi"), "", .{});
     lib.root_module.addIncludePath(upstream.path("src/bindings/capi"));
     lib.root_module.addCSourceFile(.{
