@@ -24,7 +24,6 @@
             "tvgSaver.cpp",
             "tvgScene.cpp",
             "tvgShape.cpp",
-            "tvgSwCanvas.cpp",
             "tvgTaskScheduler.cpp",
             "tvgText.cpp",
         },
@@ -36,7 +35,6 @@
             "tvgSwPostEffect.cpp",
             "tvgSwRaster.cpp",
             "tvgSwRasterCore.cpp",
-            "tvgSwRasterSimd.cpp",
             "tvgSwRenderer.cpp",
             "tvgSwRle.cpp",
             "tvgSwShape.cpp",
@@ -70,6 +68,7 @@
                 "tvgWgCommon.cpp",
                 "tvgWgCompositor.cpp",
                 "tvgWgMesh.cpp",
+                "tvgWgPipelines.cpp",
                 "tvgWgRenderData.cpp",
                 "tvgWgRenderer.cpp",
                 "tvgWgRenderTarget.cpp",
@@ -131,6 +130,9 @@
                 "tvgAndroidMediaLoader.cpp",
             },
         },
+        .raw = .{
+            "tvgRawLoader.cpp",
+        },
         .png = .{
             .external = .{
                 "tvgPngLoader.cpp",
@@ -139,9 +141,6 @@
                 "tvgLodePng.cpp",
                 "tvgLodePngUtil.cpp",
                 "tvgPngLoader.cpp",
-            },
-            .raw = .{
-                "tvgRawLoader.cpp",
             },
         },
         .sfnt = .{

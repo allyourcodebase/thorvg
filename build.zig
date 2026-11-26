@@ -4,17 +4,17 @@ const sources = @import("src/thorvg.zon");
 const version = "1.1.4";
 
 pub const Engine = enum {
-    pub const all_engines = &[_]Engine{ .sw, .gl, .wg };
-    pub const default_engines = &[_]Engine{.sw};
+    pub const all_engines = &[_]Engine{ .cpu, .gl, .wg };
+    pub const default_engines = &[_]Engine{ .cpu, .gl, .wg };
 
-    sw,
+    cpu,
     gl,
     wg,
 };
 
 pub const Loader = enum {
     pub const all_loaders = &[_]Loader{ .svg, .png, .jpg, .lottie, .sfnt, .otf, .webp, .gif, .media };
-    pub const default_loaders = &[_]Loader{ .svg, .lottie, .sfnt };
+    pub const default_loaders = &[_]Loader{ .svg, .lottie, .sfnt, .png, .jpg, .webp, .gif, .media };
 
     svg,
     png,
@@ -40,13 +40,16 @@ pub const Extra = enum {
     opengl_es,
 };
 
-// TODO: Remove sanitize_c, path stripping function in common tvgStr causing UB
-
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const static = b.option(bool, "static", "Build as static library") orelse true;
+    const static = b.option(
+        bool,
+        "static",
+        "Force to use static linking module",
+    ) orelse true;
+
     const upstream_dev = b.option(
         bool,
         "upstream-dev",
@@ -56,28 +59,28 @@ pub fn build(b: *std.Build) !void {
     const engines = b.option(
         []const Engine,
         "engines",
-        "Which engines should be built?",
+        "Enable Rasterizer Engine in thorvg",
     ) orelse Engine.default_engines;
     const engine_set = std.EnumSet(Engine).initMany(engines);
 
     const loaders = b.option(
         []const Loader,
         "loaders",
-        "Which loaders should be built?",
+        "Enable File Loaders in thorvg",
     ) orelse Loader.default_loaders;
     const loader_set = std.EnumSet(Loader).initMany(loaders);
 
     const savers = b.option(
         []const Saver,
         "savers",
-        "Which savers should be built?",
+        "Enable File Savers in thorvg",
     ) orelse Saver.default_savers;
     const saver_set = std.EnumSet(Saver).initMany(savers);
 
     const extras = b.option(
         []const Extra,
         "extras",
-        "Which extra features should be enabled?",
+        "Enable support for extra options",
     ) orelse Extra.default_extras;
     const extra_set = std.EnumSet(Extra).initMany(extras);
 
@@ -98,15 +101,13 @@ pub fn build(b: *std.Build) !void {
         }),
     });
 
-    lib.root_module.sanitize_c = .off;
-    lib.root_module.addCMacro("_USE_MATH_DEFINES", "1");
+    sharedModuleSetup(lib.root_module, static);
 
     const config_h = b.addConfigHeader(.{
         .include_path = "config.h",
     }, .{
         .THORVG_VERSION_STRING = version,
         .THORVG_CAPI_BINDING_SUPPORT = 1,
-        .THORVG_FILE_IO_SUPPORT = 1,
         .WIN32_LEAN_AND_MEAN = 1,
     });
 
@@ -128,7 +129,7 @@ pub fn build(b: *std.Build) !void {
         );
     }
     if (loader_set.contains(.sfnt)) {
-        config_h.addValues(.{ .THORVG_SFNT_LOADER_SUPPORT = 1 });
+        config_h.addValues(.{ .THORVG_OTF_LOADER_SUPPORT = 1 });
     }
 
     for (savers) |saver| try config_h.values.put(
@@ -138,11 +139,6 @@ pub fn build(b: *std.Build) !void {
         }),
         .{ .int = 1 },
     );
-
-    if (extra_set.contains(.openmp)) {
-        config_h.addValues(.{ .THORVG_OPENMP_SUPPORT = 1 });
-    }
-
     if (threads) {
         config_h.addValues(.{ .THORVG_THREAD_SUPPORT = 1 });
         if (target.result.os.tag != .windows and !target.result.abi.isAndroid()) {
@@ -150,12 +146,23 @@ pub fn build(b: *std.Build) !void {
         }
     }
 
-    if (b.option(bool, "verbose-logging", "Verbose ThorVG logs") orelse false) {
+    if (b.option(
+        bool,
+        "partial",
+        "Enable Partial Rendering in thorvg",
+    ) orelse true) {
+        config_h.addValues(.{ .THORVG_PARTIAL_RENDER_SUPPORT = 1 });
+    }
+
+    if (b.option(bool, "log", "Enable log message") orelse false) {
         config_h.addValues(.{ .THORVG_LOG_ENABLED = 1 });
     }
 
-    lib.root_module.addConfigHeader(config_h);
+    if (b.option(bool, "file", "Enable File IO support") orelse true) {
+        config_h.addValues(.{ .THORVG_FILE_IO_SUPPORT = 1 });
+    }
 
+    lib.root_module.addConfigHeader(config_h);
     lib.root_module.addIncludePath(upstream.path("inc"));
     lib.root_module.addIncludePath(upstream.path("src/common"));
     lib.root_module.addIncludePath(upstream.path("src/renderer"));
@@ -163,17 +170,64 @@ pub fn build(b: *std.Build) !void {
 
     lib.installHeadersDirectory(upstream.path("inc"), "", .{});
 
-    if (static) {
-        lib.root_module.addCMacro("TVG_STATIC", "");
-    }
-
     lib.root_module.addCSourceFiles(.{
         .files = &sources.common,
         .root = upstream.path("src/common"),
         .flags = flags,
     });
 
-    if (engine_set.contains(.sw)) {
+    lib.root_module.addCSourceFiles(.{
+        .files = &sources.renderer.files,
+        .root = upstream.path("src/renderer"),
+        .flags = flags,
+    });
+
+    lib.root_module.addCSourceFiles(.{
+        .files = &sources.modules.raw,
+        .root = upstream.path("src/modules/raw"),
+        .flags = flags,
+    });
+
+    if (engine_set.contains(.cpu)) {
+        if (b.option(
+            bool,
+            "simd",
+            "Enable CPU vectorization (AVX2 on x86, NEON on ARM)",
+        ) orelse true) {
+            const cpu = target.result.cpu;
+            var simd = false;
+
+            var simd_flags: std.ArrayList([]const u8) = .empty;
+
+            inline for (flags) |flag| {
+                try simd_flags.append(b.allocator, flag);
+            }
+
+            if (cpu.has(.x86, .avx)) {
+                simd = true;
+                config_h.addValues(.{ .THORVG_AVX_SUPPORT = 1 });
+                try simd_flags.append(b.allocator, "-mavx2");
+            } else if (cpu.has(.aarch64, .neon) or cpu.has(.arm, .neon) or cpu.arch.isWasm()) {
+                simd = true;
+                config_h.addValues(.{ .THORVG_NEON_SUPPORT = 1 });
+                try simd_flags.append(b.allocator, "-mfpu=neon");
+                if (cpu.arch.isWasm()) {
+                    try simd_flags.append(b.allocator, "-msimd128");
+                }
+            }
+
+            if (simd) {
+                if (extra_set.contains(.openmp)) {
+                    config_h.addValues(.{ .THORVG_OPENMP_SUPPORT = 1 });
+                }
+
+                lib.root_module.addCSourceFile(.{
+                    .file = upstream.path("src/renderer/cpu_engine/tvgSwRasterSimd.cpp"),
+                    .flags = simd_flags.items,
+                });
+            }
+        }
+
         lib.root_module.addIncludePath(upstream.path("src/renderer/cpu_engine"));
         lib.root_module.addCSourceFiles(.{
             .files = &sources.renderer.cpu_engine,
@@ -183,22 +237,25 @@ pub fn build(b: *std.Build) !void {
     }
 
     if (engine_set.contains(.gl)) {
-        // TODO: Support GLES
-        config_h.addValues(.{ .THORVG_GL_TARGET_GL = 1 });
-        lib.root_module.addIncludePath(b.path("include"));
+        if (target.result.os.tag == .emscripten or extra_set.contains(.opengl_es)) {
+            config_h.addValues(.{ .THORVG_GL_TARGET_GLES = 1 });
+        } else {
+            config_h.addValues(.{ .THORVG_GL_TARGET_GL = 1 });
+        }
         lib.root_module.addIncludePath(upstream.path("src/renderer/gpu_engine/gl"));
         lib.root_module.addCSourceFiles(.{
             .files = &sources.renderer.gpu_engine.gl,
             .root = upstream.path("src/renderer/gpu_engine/gl"),
             .flags = flags,
         });
+        lib.root_module.linkSystemLibrary("egl", .{});
     }
 
     if (engine_set.contains(.wg)) {
         lib.root_module.addIncludePath(upstream.path("src/renderer/gpu_engine/wg"));
         lib.root_module.addCSourceFiles(.{
             .files = &sources.renderer.gpu_engine.wg,
-            .root = upstream.path("src/renderer/gpu_engine/gl"),
+            .root = upstream.path("src/renderer/gpu_engine/wg"),
             .flags = flags,
         });
     }
@@ -210,6 +267,10 @@ pub fn build(b: *std.Build) !void {
             .root = upstream.path("src/renderer/gpu_engine"),
             .flags = flags,
         });
+
+        if (target.result.os.tag != .emscripten) {
+            lib.root_module.linkSystemLibrary("wgpu_native", .{});
+        }
     }
 
     const mods_path = upstream.path("src/modules");
@@ -232,6 +293,26 @@ pub fn build(b: *std.Build) !void {
             .root = gifsave_path,
             .flags = flags,
         });
+    }
+
+    if (loader_set.contains(.png)) {
+        if (static) {
+            const png_path = mods_path.path(b, "png/static");
+            lib.root_module.addIncludePath(png_path);
+            lib.root_module.addCSourceFiles(.{
+                .files = &sources.modules.png.static,
+                .root = png_path,
+                .flags = flags,
+            });
+        } else {
+            const png_path = mods_path.path(b, "png/external");
+            lib.root_module.addIncludePath(png_path);
+            lib.root_module.addCSourceFiles(.{
+                .files = &sources.modules.png.external,
+                .root = png_path,
+                .flags = flags,
+            });
+        }
     }
 
     if (loader_set.contains(.jpg)) {
@@ -270,6 +351,7 @@ pub fn build(b: *std.Build) !void {
     // Experimental video loader
     if (loader_set.contains(.media)) {
         const media_path = mods_path.path(b, "media");
+        lib.installHeader(media_path.path(b, "thorvg_media.h"), "thorvg_media.h");
         lib.root_module.addIncludePath(media_path);
         lib.root_module.addCSourceFiles(.{
             .files = &sources.modules.media.files,
@@ -277,18 +359,18 @@ pub fn build(b: *std.Build) !void {
             .flags = flags,
         });
 
-        if (builtin.os.tag == .emscripten) {
-            lib.root_module.addIncludePath(media_path(b, "web"));
+        if (target.result.os.tag == .emscripten) {
+            lib.root_module.addIncludePath(media_path.path(b, "web"));
             lib.root_module.addCSourceFiles(.{
                 .files = &sources.modules.media.web,
-                .root = media_path(b, "web"),
+                .root = media_path.path(b, "web"),
                 .flags = flags,
             });
-        } else if (builtin.os.tag == .ios or builtin.os.tag == .tvos) {
-            lib.root_module.addIncludePath(media_path(b, "apple"));
+        } else if (target.result.os.tag == .ios or target.result.os.tag == .tvos) {
+            lib.root_module.addIncludePath(media_path.path(b, "apple"));
             lib.root_module.addCSourceFiles(.{
                 .files = &sources.modules.media.apple,
-                .root = media_path(b, "apple"),
+                .root = media_path.path(b, "apple"),
                 .flags = flags,
             });
         }
@@ -366,6 +448,53 @@ pub fn build(b: *std.Build) !void {
 
     b.installArtifact(lib);
 
+    // -- lottie2gif --
+    const lottie2gif_step = b.step("lottie2gif", "Build the tvg-lottie2gif tool");
+    const lottie2gif = b.addExecutable(.{
+        .name = "tvg-lottie2gif",
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+            .link_libcpp = true,
+        }),
+    });
+
+    sharedModuleSetup(lottie2gif.root_module, static);
+    lottie2gif.root_module.linkLibrary(lib);
+    lottie2gif.root_module.addConfigHeader(config_h);
+    lottie2gif.root_module.addCSourceFile(.{
+        .file = upstream.path("tools/lottie2gif/lottie2gif.cpp"),
+        .flags = flags,
+    });
+
+    const install_lottie2gif = b.addInstallArtifact(lottie2gif, .{});
+    lottie2gif.root_module.linkLibrary(lib);
+    lottie2gif_step.dependOn(&install_lottie2gif.step);
+
+    // -- svg2png --
+    const svg2png_step = b.step("svg2png", "Build the tvg-svg2png tool");
+    const svg2png = b.addExecutable(.{
+        .name = "tvg-svg2png",
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+            .link_libcpp = true,
+        }),
+    });
+
+    sharedModuleSetup(svg2png.root_module, static);
+    svg2png.root_module.linkLibrary(lib);
+    svg2png.root_module.addConfigHeader(config_h);
+    svg2png.root_module.addCSourceFiles(.{
+        .files = &.{ "svg2png.cpp", "lodepng.cpp" },
+        .root = upstream.path("tools/svg2png/"),
+        .flags = flags,
+    });
+
+    const install_svg2png = b.addInstallArtifact(svg2png, .{});
+    svg2png.root_module.linkLibrary(lib);
+    svg2png_step.dependOn(&install_svg2png.step);
+
     const tests = b.addExecutable(.{
         .name = "thorvg-tests",
         .root_module = b.createModule(.{
@@ -374,32 +503,30 @@ pub fn build(b: *std.Build) !void {
             .link_libcpp = true,
         }),
     });
-    tests.root_module.sanitize_c = .off;
+
+    sharedModuleSetup(tests.root_module, static);
 
     const test_step = b.step("test", "Run thorvg tests");
+
+    if (engine_set.contains(.gl)) {
+        tests.root_module.addCMacro("THORVG_GL_TEST_SUPPORT", "");
+    }
+    if (engine_set.contains(.wg)) {
+        tests.root_module.addCMacro("THORWG_WG_TEST_SUPPORT", "");
+    }
 
     tests.root_module.linkLibrary(lib);
     tests.root_module.addConfigHeader(config_h);
 
-    if (static) {
-        tests.root_module.addCMacro("TVG_STATIC", "");
-    }
-
-    var path_writer: std.Io.Writer.Allocating = std.Io.Writer.Allocating.init(b.allocator);
-    try upstream.path("test/resources").format(&path_writer.writer);
-    var path_string = path_writer.toArrayList();
-
-    tests.root_module.addCMacro("TEST_DIR", b.fmt("\"{f}\"", .{
-        PathFormatter{ .path = path_string.items },
-    }));
+    tests.root_module.addCMacro("TEST_DIR", "\"resources\"");
     tests.root_module.addCSourceFiles(.{
         .files = test_sources,
         .root = upstream.path("test"),
         .flags = flags,
     });
-    path_string.deinit(b.allocator);
 
     const run_tests = b.addRunArtifact(tests);
+    run_tests.cwd = upstream.path("test");
     run_tests.addPassthruArgs();
 
     test_step.dependOn(&run_tests.step);
@@ -421,23 +548,19 @@ pub fn build(b: *std.Build) !void {
             }),
         });
 
-        try upstream.path("examples/resources").format(&path_writer.writer);
-        path_string = path_writer.toArrayList();
-
         c_api_example.root_module.linkLibrary(sdl);
         c_api_example.root_module.linkLibrary(lib);
         c_api_example.root_module.addCMacro("TVG_STATIC", "");
-        c_api_example.root_module.addCMacro("EXAMPLE_DIR", b.fmt("\"{f}\"", .{
-            PathFormatter{ .path = path_string.items },
-        }));
-        path_string.deinit(b.allocator);
+        // c_api_example.root_module.addCMacro("EXAMPLE_DIR", b.fmt("\"{f}\"", .{
+        //     PathFormatter{ .path = path_string.items },
+        // }));
 
         if (engine_set.contains(.gl)) {
             c_api_example.root_module.addCSourceFile(.{
                 .file = b.path("CapiExampleGl.cpp"),
                 .flags = flags,
             });
-        } else if (engine_set.contains(.sw)) {
+        } else if (engine_set.contains(.cpu)) {
             c_api_example.root_module.addCSourceFile(.{
                 .file = upstream.path("examples/Capi.cpp"),
                 .flags = flags,
@@ -472,12 +595,25 @@ const PathFormatter = struct {
     }
 };
 
+fn sharedModuleSetup(mod: *std.Build.Module, static: bool) void {
+    mod.sanitize_c = .off;
+    if (static) {
+        mod.addCMacro("TVG_STATIC", "");
+    } else {
+        mod.addCMacro("TVG_EXPORT", "");
+        mod.addCMacro("TVG_BUILD", "");
+    }
+    mod.addCMacro("_USE_MATH_DEFINES", "1");
+}
+
 const flags = &.{"-std=c++14"};
 
 const test_sources = &.{
     "testAccessor.cpp",
     "testAnimation.cpp",
     "testFill.cpp",
+    "testGlCanvas.cpp",
+    "testGlEngine.cpp",
     "testInitializer.cpp",
     "testLottie.cpp",
     "testMain.cpp",
@@ -489,4 +625,6 @@ const test_sources = &.{
     "testSwCanvas.cpp",
     "testSwEngine.cpp",
     "testText.cpp",
+    "testWgCanvas.cpp",
+    "testWgEngine.cpp",
 };
