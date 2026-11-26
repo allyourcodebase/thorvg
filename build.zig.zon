@@ -1,6 +1,6 @@
 .{
     .name = .thorvg,
-    .version = "1.0.0-pre20",
+    .version = "1.1.4",
     .fingerprint = 0x16b0a3189c6c2a66,
     .dependencies = .{
         .thorvg = .{
@@ -13,6 +13,11 @@
             .lazy = true,
         },
     },
-
-    .paths = .{""},
+    .paths = .{
+        "src",
+        "build.zig",
+        "build.zig.zon",
+        "LICENSE",
+        "README",
+    },
 }
