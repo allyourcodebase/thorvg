@@ -207,11 +207,9 @@ pub fn build(b: *std.Build) !void {
             if (cpu.has(.x86, .avx)) {
                 simd = true;
                 config_h.addValues(.{ .THORVG_AVX_SUPPORT = 1 });
-                try simd_flags.append(b.allocator, "-mavx2");
             } else if (cpu.has(.aarch64, .neon) or cpu.has(.arm, .neon) or cpu.arch.isWasm()) {
                 simd = true;
                 config_h.addValues(.{ .THORVG_NEON_SUPPORT = 1 });
-                try simd_flags.append(b.allocator, "-mfpu=neon");
                 if (cpu.arch.isWasm()) {
                     try simd_flags.append(b.allocator, "-msimd128");
                 }
